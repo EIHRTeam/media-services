@@ -1,0 +1,135 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  rust:
+    name: Rust
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          # The wasm target is needed to type-check the bindings crate, which is
+          # gated on it.
+          rustup target add wasm32-unknown-unknown
+          rustup component add clippy rustfmt
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+      # The tests above run without a signing backend: the suite generates its
+      # own chain. Setting C2PA_TEST_KEY_PEM and C2PA_TEST_CHAIN_PEM would run
+      # the same tests against a real certificate instead.
+
+  wasm:
+    name: WebAssembly
+    runs-on: ubuntu-latest
+    needs: rust
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the toolchain
+        run: |
+          rustup toolchain install --profile minimal
+          rustup target add wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # The CLI has to match Cargo.lock exactly, so the version is read from it
+      # rather than pinned here where the two could drift apart.
+      - name: Install wasm-bindgen
+        run: |
+          version=$(grep -A1 '^name = "wasm-bindgen"$' Cargo.lock | sed -n 's/^version = "\(.*\)"$/\1/p' | head -1)
+          echo "wasm-bindgen $version"
+          cargo install wasm-bindgen-cli --version "$version" --locked
+
+      - name: Install binaryen
+        run: sudo apt-get update && sudo apt-get install -y binaryen
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm typecheck
+
+      # Fails if a private key or a bearer token would be published.
+      - run: pnpm check:bundle
+
+      # The node job consumes these rather than rebuilding: it has no wasm
+      # toolchain, and a second build would be a second thing to keep in step.
+      - uses: actions/upload-artifact@v7
+        with:
+          name: package
+          path: |
+            dist
+            pkg
+          if-no-files-found: error
+
+  node:
+    name: Node integration
+    runs-on: ubuntu-latest
+    needs: wasm
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+
+      # `pnpm test` builds a Rust helper to generate the test signing identity,
+      # so this job needs a toolchain as well.
+      - name: Install the toolchain
+        run: rustup toolchain install --profile minimal
+
+      - uses: Swatinem/rust-cache@v2
+
+      - run: pnpm install --frozen-lockfile
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: package
+
+      # No build step: the module and its bindings come from the wasm job, which
+      # is the only place with the toolchain to produce them.
+      #
+      # `pnpm test` generates the test signing identity first: it comes from the
+      # Rust suite, and cargo clears target/tmp whenever it rebuilds.
+      - run: pnpm test
+
+  acceptance:
+    name: c2patool acceptance
+    runs-on: macos-latest
+    needs: wasm
+    # Optional: it needs `c2patool`, which is not in the default runners. Run it
+    # locally with `pnpm acceptance` after `cargo test -p provenance`.
+    if: ${{ github.event_name == 'workflow_dispatch' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test -p provenance --locked
+      - run: cargo install c2patool --version 0.28.1 --locked
+      - run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - run: node scripts/acceptance.mjs

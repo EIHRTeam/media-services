@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    // Pinned to the oldest runtime we support — Chromium 130, which is behind
+    // Node's floor of 24. `lib` decides which APIs type-check, so anything in
+    // here compiles but may not exist when a caller runs it. The ES2025 entries
+    // are listed one at a time rather than as "ES2025" on purpose: the umbrella
+    // also brings in RegExp.escape and Float16Array (Chrome 135-136) and
+    // Error.isError (134), all of which are past that baseline. tsconfig is the
+    // only thing standing between a typo and a runtime failure here — there is
+    // no lint step. Re-derive this list before widening it; see README.
+    "lib": [
+      "ES2024",
+      "DOM",
+      "ES2025.Collection",
+      "ES2025.Iterator",
+      "ES2025.Promise",
+      "ESNext.Disposable"
+    ],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "rootDir": "js",
+    "outDir": "dist",
+    "declaration": true,
+    "declarationMap": true,
+    "sourceMap": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "exactOptionalPropertyTypes": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "types": ["node"]
+  },
+  "include": ["js/**/*.ts"]
+}

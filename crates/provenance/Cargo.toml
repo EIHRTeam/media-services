@@ -1,0 +1,41 @@
+[package]
+name = "provenance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "XMP + C2PA provenance orchestration for images"
+
+[dependencies]
+# default-features MUST be off: the defaults pull in `openssl` and
+# `default_http`, neither of which builds for wasm32-unknown-unknown.
+#
+# Pinned exactly, and deliberately not to what upstream c2pa-js verifies on wasm:
+# that is 0.91.0, which cannot round-trip a `claim_generator_info.specVersion`.
+# It serialises the field outside the claim's CBOR map, so every read-back of a
+# manifest carrying one fails with "unexpected trailing data: 18 bytes
+# remaining" — the exact encoded size of the pair. 0.90.22 (what c2patool
+# 0.27.22 is built on) and 0.91.2 both handle it, so 0.91.0 is the outlier.
+# Worth re-checking when moving this pin: the parity it gave up is real.
+c2pa = { version = "=0.91.2", default-features = false, features = ["rust_native_crypto"] }
+async-trait = "0.1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+pem = "4"
+xmp = { path = "../xmp" }
+xmp-image = { path = "../xmp-image" }
+
+[dev-dependencies]
+# Fixtures are generated at test time rather than committed, so tests need no
+# binary assets. `image` is native-only here; the wasm target never sees it.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+# Signs the Sig_structure with a local P-256 key, mirroring what the remote
+# signing service does with WebCrypto. This lets the full c2pa pipeline run
+# natively, with no network and no browser.
+p256 = { version = "0.13", features = ["ecdsa", "pkcs8", "pem"] }
+# Generates the test certificate chain, so tests depend on no external repo and
+# no committed private key.
+rcgen = "0.13"
+tokio = { version = "1", features = ["macros", "rt"] }

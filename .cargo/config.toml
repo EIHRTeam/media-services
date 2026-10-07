@@ -1,0 +1,8 @@
+# getrandom 0.3+ needs BOTH the `wasm_js` feature AND this cfg to build for
+# wasm32-unknown-unknown; the feature alone is not sufficient.
+#
+# This must live here rather than in an exported RUSTFLAGS, because an exported
+# RUSTFLAGS *replaces* this table entirely, silently dropping the cfg. Build
+# scripts must therefore leave RUSTFLAGS / CARGO_ENCODED_RUSTFLAGS unset.
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']

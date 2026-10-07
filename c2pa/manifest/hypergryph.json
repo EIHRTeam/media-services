@@ -1,0 +1,105 @@
+{
+  "claim_version": 2,
+  "title": "example.png",
+  "format": "image/png",
+
+  "claim_generator_info": [
+    {
+      "name": "EIHRTeam SKLAND Wiki Media Provenance Service",
+      "version": "1.0.0",
+      "specVersion": "2.4.0"
+    }
+  ],
+
+  "assertions": [
+    {
+      "label": "c2pa.actions.v2",
+      "data": {
+        "actions": [
+          {
+            "action": "c2pa.created",
+            "digitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation",
+            "softwareAgent": {
+              "name": "EIHRTeam SKLAND Wiki Media Provenance Service",
+              "version": "1.0.0"
+            }
+          },
+          {
+            "action": "c2pa.published",
+            "softwareAgent": {
+              "name": "EIHRTeam SKLAND Wiki Media Provenance Service",
+              "version": "1.0.0"
+            }
+          }
+        ],
+        "allActionsIncluded": false
+      }
+    },
+
+    {
+      "label": "cawg.metadata",
+      "kind": "Json",
+      "data": {
+        "@context": {
+          "dc": "http://purl.org/dc/elements/1.1/",
+          "xmp": "http://ns.adobe.com/xap/1.0/",
+          "xmpRights": "http://ns.adobe.com/xap/1.0/rights/",
+          "photoshop": "http://ns.adobe.com/photoshop/1.0/",
+          "plus": "http://ns.useplus.org/ldf/xmp/1.0/",
+          "Iptc4xmpExt": "http://iptc.org/std/Iptc4xmpExt/2008-02-29/"
+        },
+
+        "dc:creator": [
+          "Shanghai Hypergryph Network Technology Co., Ltd."
+        ],
+
+        "dc:publisher": [
+          "SKLAND Endfield Wiki Editorial Team"
+        ],
+
+        "photoshop:Credit": "SKLAND Endfield Wiki Editorial Team",
+
+        "photoshop:Source": "Shanghai Hypergryph Network Technology Co., Ltd.",
+
+        "dc:rights": "Copyright © Shanghai Hypergryph Network Technology Co., Ltd. All Rights Reserved.",
+
+        "xmpRights:Marked": true,
+
+        "xmpRights:Owner": [
+          "Shanghai Hypergryph Network Technology Co., Ltd."
+        ],
+
+        "plus:CopyrightOwner": [
+          {
+            "plus:CopyrightOwnerName": "Shanghai Hypergryph Network Technology Co., Ltd."
+          }
+        ],
+
+        "xmpRights:WebStatement": "https://endfield.gryphline.com/en-us/news/4497",
+
+        "xmpRights:UsageTerms": [
+          "All Rights Reserved. Policy reference: https://endfield.gryphline.com/en-us/news/4497"
+        ],
+
+        "Iptc4xmpExt:DigitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation"
+      }
+    },
+
+    {
+      "label": "cawg.training-mining",
+      "data": {
+        "entries": {
+          "cawg.data_mining": {
+            "use": "notAllowed"
+          },
+          "cawg.ai_training": {
+            "use": "notAllowed"
+          },
+          "cawg.ai_generative_training": {
+            "use": "notAllowed"
+          }
+        }
+      }
+    }
+  ]
+}

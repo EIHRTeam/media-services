@@ -1,0 +1,15 @@
+[package]
+name = "xmp-image"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Read and write XMP metadata inside JPEG, PNG and WebP containers"
+
+[dependencies]
+thiserror = "2"
+
+[dev-dependencies]
+# Fixtures are generated rather than committed, so tests carry no binary assets.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }

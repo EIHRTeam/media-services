@@ -1,0 +1,12 @@
+[package]
+name = "xmp"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "XMP packet reading and writing for image metadata"
+
+[dependencies]
+quick-xml = "0.41"
+thiserror = "2"

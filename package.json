@@ -1,0 +1,60 @@
+{
+  "name": "@eihrteam/mps-worker",
+  "version": "1.0.0",
+  "packageManager": "pnpm@11.26.0",
+  "description": "Write XMP metadata and C2PA provenance into images, in the browser or Node",
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./wasm-binary": "./pkg/media_services_wasm_bg.wasm",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/index.*",
+    "dist/errors.*",
+    "dist/loader.*",
+    "dist/result.*",
+    "js/index.ts",
+    "js/errors.ts",
+    "js/loader.ts",
+    "js/result.ts",
+    "pkg/media_services_wasm*",
+    "pkg/THIRD_PARTY_LICENSES.txt"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "gen:presets": "node scripts/gen-presets.mjs",
+    "gen:licenses": "node scripts/gen-licenses.mjs",
+    "build:wasm": "node scripts/build-wasm.mjs",
+    "build:js": "tsc -p tsconfig.json",
+    "build": "pnpm gen:presets && pnpm build:wasm && pnpm build:js && pnpm gen:licenses",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "gen:identity": "cargo test -p provenance --test identity",
+    "test": "pnpm gen:identity && node --test test/*.test.mjs",
+    "check:bundle": "node scripts/check-bundle.mjs",
+    "acceptance": "node scripts/acceptance.mjs",
+    "prepack": "pnpm build && pnpm check:bundle"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "typescript": "^7.0.2"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/EIHRTeam/media-services.git"
+  },
+  "homepage": "https://github.com/EIHRTeam/media-services#readme",
+  "bugs": {
+    "url": "https://github.com/EIHRTeam/media-services/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}
