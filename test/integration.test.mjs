@@ -48,22 +48,29 @@ after(async () => {
   await signer?.close();
 });
 
-test("oversized PNG and WebP chunks reject on the actual wasm32 module", { timeout: 10_000 }, async () => {
-  const png = Buffer.alloc(16);
-  Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
-  png.writeUInt32BE(0xfffffff4, 8);
-  png.write("iTXt", 12);
-  const webp = Buffer.alloc(20);
-  webp.write("RIFF", 0);
-  webp.writeUInt32LE(12, 4);
-  webp.write("WEBPXMP ", 8);
-  webp.writeUInt32LE(0xfffffff8, 16);
-  for (const image of [png, webp]) {
-    await assert.rejects(() => readXmp(image), (error) => error.code === "containerCorrupt");
-  }
-  // A malformed input must leave the module usable for the next call.
-  assert.equal(await detectFormat(load("plain.jpg")), "image/jpeg");
-});
+test(
+  "oversized PNG and WebP chunks reject on the actual wasm32 module",
+  { timeout: 10_000 },
+  async () => {
+    const png = Buffer.alloc(16);
+    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]).copy(png);
+    png.writeUInt32BE(0xfffffff4, 8);
+    png.write("iTXt", 12);
+    const webp = Buffer.alloc(20);
+    webp.write("RIFF", 0);
+    webp.writeUInt32LE(12, 4);
+    webp.write("WEBPXMP ", 8);
+    webp.writeUInt32LE(0xfffffff8, 16);
+    for (const image of [png, webp]) {
+      await assert.rejects(
+        () => readXmp(image),
+        (error) => error.code === "containerCorrupt",
+      );
+    }
+    // A malformed input must leave the module usable for the next call.
+    assert.equal(await detectFormat(load("plain.jpg")), "image/jpeg");
+  },
+);
 
 test("connects and fetches the signer info exactly once", () => {
   const calls = signer.requests.filter((r) => r.url === "/signer");

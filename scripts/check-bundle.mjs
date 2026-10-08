@@ -54,10 +54,20 @@ if (files.length === 0) {
 const findings = [];
 const paths = new Set(files.map((file) => file.path));
 const required = [
-  "package.json", "README.md", "LICENSE",
-  "dist/index.js", "dist/index.d.ts", "dist/errors.js", "dist/loader.js", "dist/result.js",
-  "js/index.ts", "js/errors.ts", "js/loader.ts", "js/result.ts",
-  "pkg/media_services_wasm.js", "pkg/media_services_wasm.d.ts",
+  "package.json",
+  "README.md",
+  "LICENSE",
+  "dist/index.js",
+  "dist/index.d.ts",
+  "dist/errors.js",
+  "dist/loader.js",
+  "dist/result.js",
+  "js/index.ts",
+  "js/errors.ts",
+  "js/loader.ts",
+  "js/result.ts",
+  "pkg/media_services_wasm.js",
+  "pkg/media_services_wasm.d.ts",
   "pkg/media_services_wasm_bg.wasm",
   "pkg/THIRD_PARTY_LICENSES.txt",
 ];
@@ -65,7 +75,11 @@ for (const path of required) {
   if (!paths.has(path)) findings.push(`missing required package file: ${path}`);
 }
 for (const file of files) {
-  if (!/^(?:package\.json|README\.md|LICENSE|js\/(?:index|errors|loader|result)\.ts|dist\/(?:index|errors|loader|result)\.(?:js|d\.ts)(?:\.map)?|pkg\/THIRD_PARTY_LICENSES\.txt|pkg\/media_services_wasm(?:_bg)?\.(?:js|d\.ts|wasm|wasm\.d\.ts))$/.test(file.path)) {
+  if (
+    !/^(?:package\.json|README\.md|LICENSE|js\/(?:index|errors|loader|result)\.ts|dist\/(?:index|errors|loader|result)\.(?:js|d\.ts)(?:\.map)?|pkg\/THIRD_PARTY_LICENSES\.txt|pkg\/media_services_wasm(?:_bg)?\.(?:js|d\.ts|wasm|wasm\.d\.ts))$/.test(
+      file.path,
+    )
+  ) {
     findings.push(`unexpected package file: ${file.path}`);
   }
   // Generated bindings and the wasm binary are large and binary; the wasm is
@@ -77,7 +91,10 @@ for (const file of files) {
     findings.push(`${file.path}: cannot inspect packaged file (${error.code ?? "read error"})`);
     continue;
   }
-  if (file.path.endsWith(".wasm") && !contents.subarray(0, 8).equals(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))) {
+  if (
+    file.path.endsWith(".wasm") &&
+    !contents.subarray(0, 8).equals(Buffer.from([0, 97, 115, 109, 1, 0, 0, 0]))
+  ) {
     findings.push(`${file.path}: invalid WebAssembly header`);
   }
   findings.push(...scan(file.path, contents));
@@ -89,4 +106,6 @@ if (findings.length > 0) {
   process.exit(1);
 }
 
-console.log(`check:bundle passed — ${files.length} files inspected, required artifacts present, no matched secret patterns`);
+console.log(
+  `check:bundle passed — ${files.length} files inspected, required artifacts present, no matched secret patterns`,
+);

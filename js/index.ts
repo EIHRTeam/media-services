@@ -271,12 +271,7 @@ export class MediaProvenance {
       };
 
       return toProcessResult(
-        await this.#session.process(
-          image,
-          xmp,
-          JSON.stringify(options.manifest),
-          options.title,
-        ),
+        await this.#session.process(image, xmp, JSON.stringify(options.manifest), options.title),
       );
     } catch (error) {
       throw wrap(error);
@@ -328,10 +323,7 @@ export async function readXmp(image: Uint8Array): Promise<string | undefined> {
 }
 
 /** Writes XMP without signing. Returns the rewritten image. */
-export async function writeXmp(
-  image: Uint8Array,
-  edit: XmpEdit = {},
-): Promise<Uint8Array> {
+export async function writeXmp(image: Uint8Array, edit: XmpEdit = {}): Promise<Uint8Array> {
   await loadWasm();
   const { writeXmp: native } = await import("../pkg/media_services_wasm.js");
   try {

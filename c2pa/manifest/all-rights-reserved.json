@@ -49,25 +49,17 @@
           "Iptc4xmpExt": "http://iptc.org/std/Iptc4xmpExt/2008-02-29/"
         },
 
-        "dc:creator": [
-          "Endfield Industries Human Resource Team"
-        ],
+        "dc:creator": ["Endfield Industries Human Resource Team"],
 
-        "dc:publisher": [
-          "SKLAND Endfield Wiki Editorial Team"
-        ],
+        "dc:publisher": ["SKLAND Endfield Wiki Editorial Team"],
 
-        "photoshop:Credit":
-          "SKLAND Endfield Wiki Editorial Team",
+        "photoshop:Credit": "SKLAND Endfield Wiki Editorial Team",
 
-        "dc:rights":
-          "Copyright © Endfield Industries Human Resource Team. All Rights Reserved.",
+        "dc:rights": "Copyright © Endfield Industries Human Resource Team. All Rights Reserved.",
 
         "xmpRights:Marked": true,
 
-        "xmpRights:Owner": [
-          "Endfield Industries Human Resource Team"
-        ],
+        "xmpRights:Owner": ["Endfield Industries Human Resource Team"],
 
         "xmpRights:UsageTerms": [
           "All Rights Reserved. Reproduction, redistribution, modification, derivative works, commercial use, machine-learning training, generative-AI training, model fine-tuning, model distillation, data mining, and inclusion in AI/ML training datasets are not permitted without prior written authorization from the rights holder, except where otherwise permitted by applicable law."
@@ -75,16 +67,13 @@
 
         "plus:CopyrightOwner": [
           {
-            "plus:CopyrightOwnerName":
-              "Endfield Industries Human Resource Team"
+            "plus:CopyrightOwnerName": "Endfield Industries Human Resource Team"
           }
         ],
 
-        "Iptc4xmpExt:DigitalSourceType":
-          "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation",
+        "Iptc4xmpExt:DigitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation",
 
-        "xmp:CreatorTool":
-          "Adobe Photoshop"
+        "xmp:CreatorTool": "Adobe Photoshop"
       }
     },
 

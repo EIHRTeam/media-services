@@ -9,10 +9,6 @@
 Read and write XMP metadata and add C2PA provenance to images with a TypeScript
 API backed by Rust and WebAssembly.
 
-The npm package is `@eihrteam/mps-worker`. It writes metadata before signing so
-that the resulting XMP is covered by the C2PA asset hash. Signing uses a
-caller-provided remote service; metadata-only operations work locally.
-
 ## Requirements
 
 - Node.js 24 or later, or Chromium 130 or later with WebAssembly and `fetch`.
@@ -67,10 +63,12 @@ import { connect, type ManifestDefinition } from "@eihrteam/mps-worker";
 const manifest: ManifestDefinition = {
   claim_version: 2,
   claim_generator_info: [{ name: "Example Studio", version: "1.0.0" }],
-  assertions: [{
-    label: "c2pa.actions.v2",
-    data: { actions: [{ action: "c2pa.created" }] },
-  }],
+  assertions: [
+    {
+      label: "c2pa.actions.v2",
+      data: { actions: [{ action: "c2pa.created" }] },
+    },
+  ],
 };
 
 const provenance = await connect({
@@ -79,17 +77,14 @@ const provenance = await connect({
 });
 
 try {
-  const { bytes, format, xmp } = await provenance.process(
-    await readFile("input.jpg"),
-    {
-      manifest,
-      title: "input.jpg",
-      xmp: {
-        creator: ["Example Studio"],
-        rights: { "x-default": "Copyright Example Studio." },
-      },
+  const { bytes, format, xmp } = await provenance.process(await readFile("input.jpg"), {
+    manifest,
+    title: "input.jpg",
+    xmp: {
+      creator: ["Example Studio"],
+      rights: { "x-default": "Copyright Example Studio." },
     },
-  );
+  });
   await writeFile("signed.jpg", bytes);
   console.log(format, xmp);
 } finally {
@@ -108,17 +103,17 @@ as the asset title. The signing key stays with the service.
 
 ## API
 
-| Export | Description |
-| --- | --- |
-| `connect(options)` | Initializes WebAssembly, fetches signer information once, and returns a `MediaProvenance` session. |
-| `session.process(image, options)` | Writes XMP, signs the image, and returns `{ bytes, format, xmp }`. |
-| `session[Symbol.dispose]()` | Releases the session. Further processing with it raises `invalidArgument`. |
-| `readXmp(image)` | Returns the embedded XML packet, or `undefined` if none exists. |
-| `writeXmp(image, edit?)` | Updates XMP without signing and returns the rewritten image. |
-| `detectFormat(image)` | Detects the container MIME type from its header. This is not a full image validation. |
-| `loadWasm(input?)` | Initializes the shared WebAssembly module, optionally using supplied bytes or a compiled module. |
-| `toProjectTime(value?)` | Formats a `Date`, epoch milliseconds, or date string in the fixed UTC+8 offset. Defaults to now. |
-| `MediaProvenanceError` | Error class with a `code` property. |
+| Export                            | Description                                                                                        |
+| --------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `connect(options)`                | Initializes WebAssembly, fetches signer information once, and returns a `MediaProvenance` session. |
+| `session.process(image, options)` | Writes XMP, signs the image, and returns `{ bytes, format, xmp }`.                                 |
+| `session[Symbol.dispose]()`       | Releases the session. Further processing with it raises `invalidArgument`.                         |
+| `readXmp(image)`                  | Returns the embedded XML packet, or `undefined` if none exists.                                    |
+| `writeXmp(image, edit?)`          | Updates XMP without signing and returns the rewritten image.                                       |
+| `detectFormat(image)`             | Detects the container MIME type from its header. This is not a full image validation.              |
+| `loadWasm(input?)`                | Initializes the shared WebAssembly module, optionally using supplied bytes or a compiled module.   |
+| `toProjectTime(value?)`           | Formats a `Date`, epoch milliseconds, or date string in the fixed UTC+8 offset. Defaults to now.   |
+| `MediaProvenanceError`            | Error class with a `code` property.                                                                |
 
 Public types include `ConnectOptions`, `ProcessOptions`, `ProcessResult`,
 `ManifestDefinition`, `XmpEdit`, `XmpDates`, `XmpValue`, `ErrorCode`, and
@@ -143,18 +138,18 @@ Edits merge with the existing packet. If none exists, `basePacket` supplies the
 starting XML; otherwise the library starts with an empty packet. Omitted fields
 are preserved.
 
-| Field | Value | XMP property |
-| --- | --- | --- |
-| `creatorTool` | String | `xmp:CreatorTool` |
-| `dates` | `{ create?, modify?, metadata? }` | `xmp:CreateDate`, `xmp:ModifyDate`, `xmp:MetadataDate` |
-| `creator` | String array | `dc:creator`, as an ordered sequence |
-| `source` | String | `dc:source` |
-| `rights` | Language-to-string map | `dc:rights` |
-| `webStatement` | String | `xmpRights:WebStatement` |
-| `usageTerms` | Language-to-string map | `xmpRights:UsageTerms` |
-| `marked` | Boolean | `xmpRights:Marked` |
-| `namespaces` | Prefix-to-URI map | Additional namespace declarations |
-| `properties` | Property-to-value map | Arbitrary `prefix:name` properties |
+| Field          | Value                             | XMP property                                           |
+| -------------- | --------------------------------- | ------------------------------------------------------ |
+| `creatorTool`  | String                            | `xmp:CreatorTool`                                      |
+| `dates`        | `{ create?, modify?, metadata? }` | `xmp:CreateDate`, `xmp:ModifyDate`, `xmp:MetadataDate` |
+| `creator`      | String array                      | `dc:creator`, as an ordered sequence                   |
+| `source`       | String                            | `dc:source`                                            |
+| `rights`       | Language-to-string map            | `dc:rights`                                            |
+| `webStatement` | String                            | `xmpRights:WebStatement`                               |
+| `usageTerms`   | Language-to-string map            | `xmpRights:UsageTerms`                                 |
+| `marked`       | Boolean                           | `xmpRights:Marked`                                     |
+| `namespaces`   | Prefix-to-URI map                 | Additional namespace declarations                      |
+| `properties`   | Property-to-value map             | Arbitrary `prefix:name` properties                     |
 
 Use `"x-default"` for a language alternative that has no specific language.
 General properties are applied after the named fields, so they override a named
@@ -215,12 +210,12 @@ WebAssembly download or initialization failures may be ordinary runtime errors.
 
 ## Supported formats and limitations
 
-| Format | MIME type | XMP storage |
-| --- | --- | --- |
-| JPEG | `image/jpeg` | Adobe XMP APP1 segment, separate from EXIF |
-| PNG | `image/png` | Uncompressed `iTXt` chunk |
-| WebP | `image/webp` | `XMP ` RIFF chunk with the `VP8X` metadata flag |
-| AVIF | `image/avif` | `mime` item with content type `application/rdf+xml` |
+| Format | MIME type    | XMP storage                                         |
+| ------ | ------------ | --------------------------------------------------- |
+| JPEG   | `image/jpeg` | Adobe XMP APP1 segment, separate from EXIF          |
+| PNG    | `image/png`  | Uncompressed `iTXt` chunk                           |
+| WebP   | `image/webp` | `XMP ` RIFF chunk with the `VP8X` metadata flag     |
+| AVIF   | `image/avif` | `mime` item with content type `application/rdf+xml` |
 
 - AVIF support is limited. Replacing an existing XMP item and layouts using
   non-file-relative construction methods are unsupported. The tests cover one
@@ -306,16 +301,16 @@ establish that the signing identity is publicly trusted.
 
 ### Repository layout
 
-| Path | Purpose |
-| --- | --- |
-| `crates/xmp/` | XMP model, parser, and serializer |
-| `crates/xmp-image/` | JPEG, PNG, WebP, and AVIF metadata containers |
-| `crates/provenance/` | Metadata/signing pipeline and transport abstraction |
-| `crates/wasm/` | WebAssembly bindings and fetch transport |
-| `js/` | TypeScript API and loader |
-| `scripts/` | Build, preset generation, acceptance, and package checks |
-| `test/` | Node integration and API result tests |
-| `c2pa/manifest/`, `xmp/` | Organization-specific source templates |
+| Path                     | Purpose                                                  |
+| ------------------------ | -------------------------------------------------------- |
+| `crates/xmp/`            | XMP model, parser, and serializer                        |
+| `crates/xmp-image/`      | JPEG, PNG, WebP, and AVIF metadata containers            |
+| `crates/provenance/`     | Metadata/signing pipeline and transport abstraction      |
+| `crates/wasm/`           | WebAssembly bindings and fetch transport                 |
+| `js/`                    | TypeScript API and loader                                |
+| `scripts/`               | Build, preset generation, acceptance, and package checks |
+| `test/`                  | Node integration and API result tests                    |
+| `c2pa/manifest/`, `xmp/` | Organization-specific source templates                   |
 
 `js/presets.ts` is generated from the source templates for repository tests and
 local use. It is not part of the published package or public API. Supply your own

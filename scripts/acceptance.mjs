@@ -46,9 +46,7 @@ function c2patool(path) {
 
 function carriesXmp(bytes) {
   return (
-    bytes.includes(XMP_HEADER) ||
-    bytes.includes(PNG_XMP_KEYWORD) ||
-    bytes.includes(WEBP_XMP_CHUNK)
+    bytes.includes(XMP_HEADER) || bytes.includes(PNG_XMP_KEYWORD) || bytes.includes(WEBP_XMP_CHUNK)
   );
 }
 

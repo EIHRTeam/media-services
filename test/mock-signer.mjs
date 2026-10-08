@@ -88,7 +88,9 @@ export async function startMockSigner({ token, identity = loadIdentity(), corrup
         // opening with the context string "Signature1". Checking it here means a
         // test fails loudly if the client ever stops sending one.
         const looksLikeSigStructure =
-          body.length > 12 && body[0] === 0x84 && body.subarray(2, 12).toString("latin1") === "Signature1";
+          body.length > 12 &&
+          body[0] === 0x84 &&
+          body.subarray(2, 12).toString("latin1") === "Signature1";
         if (!looksLikeSigStructure) {
           response.writeHead(400, { "content-type": "application/json" });
           response.end(

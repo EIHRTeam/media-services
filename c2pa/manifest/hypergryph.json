@@ -49,13 +49,9 @@
           "Iptc4xmpExt": "http://iptc.org/std/Iptc4xmpExt/2008-02-29/"
         },
 
-        "dc:creator": [
-          "Shanghai Hypergryph Network Technology Co., Ltd."
-        ],
+        "dc:creator": ["Shanghai Hypergryph Network Technology Co., Ltd."],
 
-        "dc:publisher": [
-          "SKLAND Endfield Wiki Editorial Team"
-        ],
+        "dc:publisher": ["SKLAND Endfield Wiki Editorial Team"],
 
         "photoshop:Credit": "SKLAND Endfield Wiki Editorial Team",
 
@@ -65,9 +61,7 @@
 
         "xmpRights:Marked": true,
 
-        "xmpRights:Owner": [
-          "Shanghai Hypergryph Network Technology Co., Ltd."
-        ],
+        "xmpRights:Owner": ["Shanghai Hypergryph Network Technology Co., Ltd."],
 
         "plus:CopyrightOwner": [
           {

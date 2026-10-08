@@ -72,7 +72,9 @@ function assertToolchain() {
         `  cargo install wasm-bindgen-cli --version ${expected} --locked`,
     );
   }
-  const actual = run(binary, ["--version"]).trim().replace(/^wasm-bindgen\s+/, "");
+  const actual = run(binary, ["--version"])
+    .trim()
+    .replace(/^wasm-bindgen\s+/, "");
   if (actual !== expected) {
     throw new Error(
       `wasm-bindgen CLI is ${actual} but Cargo.lock pins ${expected}.\n` +
@@ -99,9 +101,13 @@ function megabytes(bytes) {
 const { version: wasmBindgenVersion, binary: wasmBindgen } = assertToolchain();
 console.log(`wasm-bindgen ${wasmBindgenVersion}`);
 
-run("cargo", ["build", "--locked", "--release", "--target", "wasm32-unknown-unknown", "-p", CRATE], {
-  stdio: "inherit",
-});
+run(
+  "cargo",
+  ["build", "--locked", "--release", "--target", "wasm32-unknown-unknown", "-p", CRATE],
+  {
+    stdio: "inherit",
+  },
+);
 
 const artifact = join(
   root,
@@ -111,15 +117,7 @@ const artifact = join(
 console.log(`compiled: ${megabytes(statSync(artifact).size)}`);
 
 mkdirSync(OUT_DIR, { recursive: true });
-run(wasmBindgen, [
-  "--target",
-  "web",
-  "--out-dir",
-  OUT_DIR,
-  "--out-name",
-  OUT_NAME,
-  artifact,
-]);
+run(wasmBindgen, ["--target", "web", "--out-dir", OUT_DIR, "--out-name", OUT_NAME, artifact]);
 
 const binding = join(OUT_DIR, `${OUT_NAME}_bg.wasm`);
 const before = statSync(binding).size;
