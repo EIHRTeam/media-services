@@ -17,9 +17,11 @@ fn status_error(status: u16, body: &[u8]) -> Error {
     }
 }
 
+#[derive(Clone)]
 pub struct FetchTransport {
     endpoint: String,
     token: String,
+    fetch: Option<js_sys::Function>,
 }
 
 impl FetchTransport {
@@ -29,7 +31,21 @@ impl FetchTransport {
         Self {
             endpoint: endpoint.trim_end_matches('/').to_string(),
             token: token.into(),
+            fetch: None,
         }
+    }
+
+    pub fn with_fetch(mut self, fetch: wasm_bindgen::JsValue) -> Result<Self, JsValue> {
+        self.fetch = if fetch.is_undefined() || fetch.is_null() {
+            None
+        } else {
+            Some(
+                fetch
+                    .dyn_into()
+                    .map_err(|_| crate::error::invalid_argument("fetch must be a function"))?,
+            )
+        };
+        Ok(self)
     }
 
     async fn send(&self, path: &str, body: Option<Vec<u8>>) -> Result<(u16, Vec<u8>), Error> {
@@ -60,9 +76,14 @@ impl FetchTransport {
         // run in a page, a worker and Node, and only the first of those has a
         // `window`. `Request`, `Headers` and `Response` are globals in all three.
         let global = js_sys::global();
-        let fetch = js_sys::Reflect::get(&global, &JsValue::from_str("fetch"))
-            .ok()
-            .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
+        let fetch = self
+            .fetch
+            .clone()
+            .or_else(|| {
+                js_sys::Reflect::get(&global, &JsValue::from_str("fetch"))
+                    .ok()
+                    .and_then(|value| value.dyn_into::<js_sys::Function>().ok())
+            })
             .ok_or_else(|| {
                 Error::Network("no fetch in this environment; Node needs 18 or newer".into())
             })?;

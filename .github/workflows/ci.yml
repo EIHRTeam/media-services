@@ -35,6 +35,9 @@ jobs:
       - name: Tests
         run: cargo test --workspace
 
+      - name: Container allocation budget
+        run: cargo run -p xmp-image --example memory --locked -- 32
+
       # The tests above run without a signing backend: the suite generates its
       # own chain. Setting C2PA_TEST_KEY_PEM and C2PA_TEST_CHAIN_PEM would run
       # the same tests against a real certificate instead.
@@ -124,6 +127,7 @@ jobs:
       # `pnpm test` generates the test signing identity first: it comes from the
       # Rust suite, and cargo clears target/tmp whenever it rebuilds.
       - run: pnpm test
+      - run: pnpm test:pack
 
   acceptance:
     name: c2patool acceptance
@@ -139,3 +143,12 @@ jobs:
       - run: cargo install c2patool --version 0.28.1 --locked
       - run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
       - run: node scripts/acceptance.mjs
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v8
+        with:
+          name: package
+      - run: MPS_TEST_C2PATOOL=c2patool pnpm test

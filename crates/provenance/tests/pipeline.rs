@@ -316,3 +316,50 @@ fn a_base_packet_keeps_its_own_dates_unless_dates_are_given() {
         Some("EIHRTeam Media Provenance Service")
     );
 }
+
+#[tokio::test]
+async fn webp_and_avif_rewrites_keep_valid_signature_and_asset_hash() {
+    let chain = load_or_generate_chain();
+    let signer = RemoteSigner::new(LocalKeyTransport::new(&chain))
+        .await
+        .unwrap();
+    let avif = std::fs::read(
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../xmp-image/tests/base.avif"),
+    )
+    .unwrap();
+    for (input, mime, title) in [
+        (
+            support::test_image(image::ImageFormat::WebP),
+            "image/webp",
+            "probe.webp",
+        ),
+        (avif, "image/avif", "probe.avif"),
+    ] {
+        let result = process(
+            &signer,
+            &input,
+            &edit(),
+            &support::manifest_json(title),
+            title,
+        )
+        .await
+        .unwrap();
+        assert_eq!(result.format, mime);
+        assert!(
+            provenance::read_xmp(&result.bytes)
+                .unwrap()
+                .unwrap()
+                .contains("EIHRTeam Media Provenance Service")
+        );
+        support::assert_signature_and_hash_valid(&result.bytes, mime);
+        std::fs::write(
+            support::signed_dir()
+                .join(format!("stamped.{}", title.split('.').next_back().unwrap())),
+            result.bytes,
+        )
+        .unwrap();
+        if mime == "image/webp" {
+            std::fs::write(support::output_dir().join("plain.webp"), input).unwrap();
+        }
+    }
+}

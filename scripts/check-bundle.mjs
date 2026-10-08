@@ -53,8 +53,21 @@ if (files.length === 0) {
 
 const findings = [];
 const paths = new Set(files.map((file) => file.path));
+const modules = [
+  "index",
+  "errors",
+  "loader",
+  "result",
+  "controls",
+  "batch",
+  "node",
+  "worker",
+  "cli",
+];
 const required = [
+  ...modules.flatMap((name) => [`dist/${name}.js`, `dist/${name}.d.ts`, `js/${name}.ts`]),
   "package.json",
+  "docs/performance.md",
   "README.md",
   "LICENSE",
   "dist/index.js",
@@ -74,9 +87,13 @@ const required = [
 for (const path of required) {
   if (!paths.has(path)) findings.push(`missing required package file: ${path}`);
 }
+const packageJson = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+if (packageJson.bin?.mps !== "./dist/cli.js") findings.push("mps bin mapping is missing");
+if (!readFileSync(join(root, "dist/cli.js"), "utf8").startsWith("#!/usr/bin/env node\n"))
+  findings.push("mps executable shebang is missing");
 for (const file of files) {
   if (
-    !/^(?:package\.json|README\.md|LICENSE|js\/(?:index|errors|loader|result)\.ts|dist\/(?:index|errors|loader|result)\.(?:js|d\.ts)(?:\.map)?|pkg\/THIRD_PARTY_LICENSES\.txt|pkg\/media_services_wasm(?:_bg)?\.(?:js|d\.ts|wasm|wasm\.d\.ts))$/.test(
+    !/^(?:package\.json|README\.md|LICENSE|docs\/performance\.md|js\/(?:index|errors|loader|result|controls|batch|node|worker|cli)\.ts|dist\/(?:index|errors|loader|result|controls|batch|node|worker|cli)\.(?:js|d\.ts)(?:\.map)?|pkg\/THIRD_PARTY_LICENSES\.txt|pkg\/media_services_wasm(?:_bg)?\.(?:js|d\.ts|wasm|wasm\.d\.ts))$/.test(
       file.path,
     )
   ) {

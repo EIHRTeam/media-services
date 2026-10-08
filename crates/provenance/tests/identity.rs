@@ -19,6 +19,12 @@ fn write_test_identity_for_other_languages() {
     let dir = support::output_dir();
     std::fs::write(dir.join("plain.jpg"), test_jpeg()).expect("write plain jpeg");
 
+    std::fs::write(
+        dir.join("plain.webp"),
+        support::test_image(image::ImageFormat::WebP),
+    )
+    .expect("write plain webp");
+
     if let Some(root) = &chain.root_pem {
         std::fs::write(dir.join("root-ca.pem"), root).expect("write root ca");
     }

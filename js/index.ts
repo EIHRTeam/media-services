@@ -27,6 +27,19 @@
 import { MediaProvenanceError, wrap } from "./errors.js";
 import { loadWasm } from "./loader.js";
 import { toProcessResult } from "./result.js";
+import { checkAbort, requestContext } from "./controls.js";
+import type { OperationOptions } from "./controls.js";
+import { runBatch } from "./batch.js";
+import type { BatchSource, BatchOptions, BatchResult } from "./batch.js";
+export type { OperationOptions } from "./controls.js";
+export type {
+  LazyImage,
+  ImageSource,
+  BatchItem,
+  BatchSource,
+  BatchOptions,
+  BatchResult,
+} from "./batch.js";
 import type { Session } from "../pkg/media_services_wasm.js";
 
 export type { InitInput } from "../pkg/media_services_wasm.js";
@@ -124,7 +137,7 @@ export interface XmpEdit {
  * whichever service shipped with the package — surprising for anyone else using
  * it, and unwanted load for whoever runs that service.
  */
-export interface ConnectOptions {
+export interface ConnectOptions extends OperationOptions {
   /**
    * The signing service's base URL, for example `https://mps.example.org`.
    * Required: see the note on this interface.
@@ -146,7 +159,7 @@ export interface ConnectOptions {
   wasm?: WebAssembly.Module | BufferSource;
 }
 
-export interface ProcessOptions {
+export interface ProcessOptions extends OperationOptions {
   /** The manifest to sign with. `js/presets.ts` holds this repo's own. */
   manifest: ManifestDefinition;
   /** A name for the asset, used as the manifest's `title`. */
@@ -230,11 +243,16 @@ export class MediaProvenance {
   readonly #session: Session;
   readonly endpoint: string;
   #released = false;
+  #active = 0;
+  #freed = false;
+  #drained: (() => void)[] = [];
+  readonly #timeout: number;
 
   /** @internal — use {@link connect}. */
-  constructor(session: Session, endpoint: string) {
+  constructor(session: Session, endpoint: string, timeout = 30_000) {
     this.#session = session;
     this.endpoint = endpoint;
+    this.#timeout = timeout;
   }
 
   /**
@@ -260,6 +278,12 @@ export class MediaProvenance {
     if (!options.title) {
       throw new MediaProvenanceError("invalidArgument", "a title is required");
     }
+    const context = requestContext({
+      ...options,
+      requestTimeoutMs: options.requestTimeoutMs ?? this.#timeout,
+    });
+    checkAbort(options.signal);
+    this.#active++;
     try {
       // Every timestamp is the moment this runs, rendered in UTC+8. One clock
       // reading feeds both the XMP dates and the manifest's action times, so the
@@ -270,12 +294,59 @@ export class MediaProvenance {
         dates: datesFor(toProjectTime(), options.xmp?.dates),
       };
 
-      return toProcessResult(
-        await this.#session.process(image, xmp, JSON.stringify(options.manifest), options.title),
+      const result = toProcessResult(
+        await this.#session.process(
+          image,
+          xmp,
+          JSON.stringify(options.manifest),
+          options.title,
+          context.fetch,
+        ),
       );
+      checkAbort(options.signal);
+      return result;
     } catch (error) {
-      throw wrap(error);
+      throw context.error(error);
+    } finally {
+      this.#active--;
+      this.#releaseIfIdle();
     }
+  }
+
+  async *processBatch(
+    source: BatchSource<ProcessOptions>,
+    options: BatchOptions = {},
+  ): AsyncGenerator<BatchResult<ProcessResult>> {
+    if (this.#released)
+      throw new MediaProvenanceError("invalidArgument", "session has been released");
+    yield* runBatch(
+      source,
+      (image, edit, signal) => {
+        if (!edit)
+          throw new MediaProvenanceError("invalidArgument", "process options are required");
+        return this.process(image, {
+          ...edit,
+          signal: edit.signal ? AbortSignal.any([edit.signal, signal]) : signal,
+        });
+      },
+      options,
+    );
+  }
+
+  #releaseIfIdle(): void {
+    if (!this.#released || this.#active || this.#freed) return;
+    this.#freed = true;
+    this.#session.free();
+    for (const done of this.#drained.splice(0)) done();
+  }
+
+  async close(): Promise<void> {
+    this[Symbol.dispose]();
+    if (!this.#freed) await new Promise<void>((resolve) => this.#drained.push(resolve));
+  }
+
+  [Symbol.asyncDispose](): Promise<void> {
+    return this.close();
   }
 
   /**
@@ -289,9 +360,8 @@ export class MediaProvenance {
    * using provenance = await connect({ token, signerEndpoint });
    * ```
    *
-   * Plain `using` rather than `await using`: the release is synchronous, and the
-   * async form would additionally require `Symbol.asyncDispose` to exist at
-   * runtime for no gain.
+   * Disposal immediately rejects new calls and frees native resources once
+   * pending calls finish. Use `await using` or `close()` to wait for that release.
    *
    * A second call is ignored rather than forwarded. The generated `free()`
    * zeroes the pointer and then hands it to the module anyway, so disposing
@@ -302,7 +372,7 @@ export class MediaProvenance {
   [Symbol.dispose](): void {
     if (this.#released) return;
     this.#released = true;
-    this.#session.free();
+    this.#releaseIfIdle();
   }
 }
 
@@ -312,22 +382,37 @@ export class MediaProvenance {
  * Reading metadata needs no credential and no signing service, so this is a
  * plain function rather than a method on a connected session.
  */
-export async function readXmp(image: Uint8Array): Promise<string | undefined> {
+export async function readXmp(
+  image: Uint8Array,
+  options: OperationOptions = {},
+): Promise<string | undefined> {
+  checkAbort(options.signal);
   await loadWasm();
+  checkAbort(options.signal);
   const { readXmp: native } = await import("../pkg/media_services_wasm.js");
   try {
-    return native(image);
+    const result = native(image);
+    checkAbort(options.signal);
+    return result;
   } catch (error) {
     throw wrap(error);
   }
 }
 
 /** Writes XMP without signing. Returns the rewritten image. */
-export async function writeXmp(image: Uint8Array, edit: XmpEdit = {}): Promise<Uint8Array> {
+export async function writeXmp(
+  image: Uint8Array,
+  edit: XmpEdit = {},
+  options: OperationOptions = {},
+): Promise<Uint8Array> {
+  checkAbort(options.signal);
   await loadWasm();
+  checkAbort(options.signal);
   const { writeXmp: native } = await import("../pkg/media_services_wasm.js");
   try {
-    return native(image, edit);
+    const result = native(image, edit);
+    checkAbort(options.signal);
+    return result;
   } catch (error) {
     throw wrap(error);
   }
@@ -361,14 +446,21 @@ export async function connect(options: ConnectOptions): Promise<MediaProvenance>
     );
   }
 
+  const context = requestContext(options);
+  checkAbort(options.signal);
   await loadWasm(options.wasm);
+  checkAbort(options.signal);
   const { Session } = await import("../pkg/media_services_wasm.js");
 
   try {
-    const session = await Session.create(endpoint, options.token);
-    return new MediaProvenance(session, endpoint);
+    const session = await Session.create(endpoint, options.token, context.fetch);
+    if (options.signal?.aborted) {
+      session.free();
+      checkAbort(options.signal);
+    }
+    return new MediaProvenance(session, endpoint, options.requestTimeoutMs);
   } catch (error) {
-    throw wrap(error);
+    throw context.error(error);
   }
 }
 
@@ -381,4 +473,25 @@ export async function detectFormat(image: Uint8Array): Promise<string> {
   } catch (error) {
     throw wrap(error);
   }
+}
+
+/** Stream metadata results without retaining an entire batch. */
+export async function* readXmpBatch(
+  source: BatchSource,
+  options: BatchOptions = {},
+): AsyncGenerator<BatchResult<string | undefined>> {
+  checkAbort(options.signal);
+  await loadWasm();
+  checkAbort(options.signal);
+  yield* runBatch(source, (image, _edit, signal) => readXmp(image, { signal }), options);
+}
+
+export async function* writeXmpBatch(
+  source: BatchSource<XmpEdit>,
+  options: BatchOptions = {},
+): AsyncGenerator<BatchResult<Uint8Array>> {
+  checkAbort(options.signal);
+  await loadWasm();
+  checkAbort(options.signal);
+  yield* runBatch(source, (image, edit, signal) => writeXmp(image, edit, { signal }), options);
 }

@@ -52,7 +52,13 @@ function equal(a, b) {
  * Starts the mock service on an ephemeral port. Returns its base URL and a
  * close function.
  */
-export async function startMockSigner({ token, identity = loadIdentity(), corrupt = false }) {
+export async function startMockSigner({
+  token,
+  identity = loadIdentity(),
+  corrupt = false,
+  delayMs = 0,
+  hang = false,
+}) {
   if (!identity) throw new Error("no test identity; run `cargo test -p provenance` first");
 
   const requests = [];
@@ -111,7 +117,14 @@ export async function startMockSigner({ token, identity = loadIdentity(), corrup
           "cache-control": "no-store",
           ...(corrupt ? { "access-control-allow-origin": "*" } : {}),
         });
-        response.end(corrupt ? Buffer.alloc(64) : signature);
+        if (hang) return;
+        if (delayMs) {
+          const timer = setTimeout(
+            () => response.end(corrupt ? Buffer.alloc(64) : signature),
+            delayMs,
+          );
+          response.on("close", () => clearTimeout(timer));
+        } else response.end(corrupt ? Buffer.alloc(64) : signature);
         return;
       }
 
@@ -125,6 +138,10 @@ export async function startMockSigner({ token, identity = loadIdentity(), corrup
   return {
     endpoint: `http://127.0.0.1:${address.port}`,
     requests,
-    close: () => new Promise((resolve) => server.close(resolve)),
+    close: () =>
+      new Promise((resolve) => {
+        server.closeAllConnections();
+        server.close(resolve);
+      }),
   };
 }

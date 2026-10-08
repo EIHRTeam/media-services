@@ -30,7 +30,7 @@ xmp-image = { path = "../xmp-image" }
 [dev-dependencies]
 # Fixtures are generated at test time rather than committed, so tests need no
 # binary assets. `image` is native-only here; the wasm target never sees it.
-image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
 # Signs the Sig_structure with a local P-256 key, mirroring what the remote
 # signing service does with WebCrypto. This lets the full c2pa pipeline run
 # natively, with no network and no browser.

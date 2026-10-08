@@ -47,6 +47,16 @@ impl<T: SignTransport> RemoteSigner<T> {
         })
     }
 
+    /// Reuses validated signing identity with a per-operation transport.
+    pub fn with_transport<U>(&self, transport: U) -> RemoteSigner<U> {
+        RemoteSigner {
+            transport,
+            info: self.info.clone(),
+            alg: self.alg,
+            certs_der: self.certs_der.clone(),
+        }
+    }
+
     pub fn info(&self) -> &SignerInfo {
         &self.info
     }

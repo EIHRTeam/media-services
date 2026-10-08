@@ -34,6 +34,8 @@ const WEBP_XMP_CHUNK = Buffer.from("XMP ", "ascii");
 const EXPECTATIONS = {
   "signed.jpg": { xmp: false },
   "stamped.jpg": { xmp: true },
+  "stamped.webp": { xmp: true },
+  "stamped.avif": { xmp: true },
 };
 
 function c2patool(path) {
@@ -46,7 +48,10 @@ function c2patool(path) {
 
 function carriesXmp(bytes) {
   return (
-    bytes.includes(XMP_HEADER) || bytes.includes(PNG_XMP_KEYWORD) || bytes.includes(WEBP_XMP_CHUNK)
+    bytes.includes(XMP_HEADER) ||
+    bytes.includes(PNG_XMP_KEYWORD) ||
+    bytes.includes(WEBP_XMP_CHUNK) ||
+    bytes.includes(Buffer.from("application/rdf+xml"))
   );
 }
 
@@ -80,7 +85,9 @@ for (const name of artifacts) {
 
   const violations = [];
 
-  if (!successes.has("assertion.dataHash.match")) {
+  if (
+    !successes.has(name.endsWith(".avif") ? "assertion.bmffHash.match" : "assertion.dataHash.match")
+  ) {
     violations.push("asset hash did not match");
   }
   if (!successes.has("claimSignature.validated")) {

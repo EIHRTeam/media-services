@@ -14,6 +14,12 @@ type Bindings = typeof import("../pkg/media_services_wasm.js");
 
 let bindings: Bindings | undefined;
 let loading: Promise<Bindings> | undefined;
+let memory: WebAssembly.Memory | undefined;
+
+/** Current linear memory allocation, for pool/benchmark diagnostics. */
+export function wasmMemoryBytes(): number {
+  return memory?.buffer.byteLength ?? 0;
+}
 
 function isNode(): boolean {
   return (
@@ -48,11 +54,11 @@ export async function loadWasm(input?: InitInput): Promise<void> {
   loading ??= (async () => {
     const module = await import("../pkg/media_services_wasm.js");
     if (input !== undefined) {
-      module.initSync({ module: input });
+      memory = module.initSync({ module: input }).memory;
     } else if (isNode()) {
-      module.initSync({ module: await nodeInput() });
+      memory = module.initSync({ module: await nodeInput() }).memory;
     } else {
-      await module.default();
+      memory = (await module.default()).memory;
     }
     bindings = module;
     return module;

@@ -11,17 +11,31 @@
     "type": "git",
     "url": "git+https://github.com/EIHRTeam/media-services.git"
   },
+  "bin": {
+    "mps": "./dist/cli.js"
+  },
   "files": [
     "dist/index.*",
     "dist/errors.*",
     "dist/loader.*",
     "dist/result.*",
+    "dist/controls.*",
+    "dist/batch.*",
+    "dist/node.*",
+    "dist/worker.*",
+    "dist/cli.*",
     "js/index.ts",
     "js/errors.ts",
     "js/loader.ts",
     "js/result.ts",
+    "js/controls.ts",
+    "js/batch.ts",
+    "js/node.ts",
+    "js/worker.ts",
+    "js/cli.ts",
     "pkg/media_services_wasm*",
-    "pkg/THIRD_PARTY_LICENSES.txt"
+    "pkg/THIRD_PARTY_LICENSES.txt",
+    "docs/performance.md"
   ],
   "type": "module",
   "sideEffects": false,
@@ -31,7 +45,11 @@
       "default": "./dist/index.js"
     },
     "./wasm-binary": "./pkg/media_services_wasm_bg.wasm",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./node": {
+      "types": "./dist/node.d.ts",
+      "default": "./dist/node.js"
+    }
   },
   "publishConfig": {
     "access": "public"
@@ -50,7 +68,9 @@
     "test": "pnpm gen:identity && node --test test/*.test.mjs",
     "check:bundle": "node scripts/check-bundle.mjs",
     "acceptance": "node scripts/acceptance.mjs",
-    "prepack": "pnpm build && pnpm check:bundle"
+    "prepack": "pnpm build && pnpm check:bundle",
+    "bench": "node scripts/bench.mjs",
+    "test:pack": "node scripts/test-pack.mjs"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",

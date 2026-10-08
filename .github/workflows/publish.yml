@@ -192,6 +192,7 @@ jobs:
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --locked -- -D warnings
           cargo test --workspace --locked
+          cargo run -p xmp-image --example memory --locked -- 32
 
       - name: Build and check package
         run: |
@@ -199,6 +200,7 @@ jobs:
           pnpm build
           pnpm typecheck
           pnpm test
+          pnpm test:pack
           pnpm check:bundle
 
       - name: Create and push git tag

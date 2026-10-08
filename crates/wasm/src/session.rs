@@ -14,6 +14,7 @@ pub struct Session {
     signer: RemoteSigner<FetchTransport>,
     /// Held only so error messages can be scrubbed of it.
     token: String,
+    transport: FetchTransport,
 }
 
 impl Session {
@@ -88,7 +89,11 @@ impl Session {
     /// `endpoint` is the service's base URL and `token` its bearer credential.
     /// The token is never compiled in and never written down: it lives only in
     /// this object and in the request headers.
-    pub async fn create(endpoint: String, token: String) -> Result<Session, JsValue> {
+    pub async fn create(
+        endpoint: String,
+        token: String,
+        fetch: JsValue,
+    ) -> Result<Session, JsValue> {
         if endpoint.trim().is_empty() {
             return Err(invalid_argument("endpoint must not be empty"));
         }
@@ -96,10 +101,15 @@ impl Session {
             return Err(invalid_argument("token must not be empty"));
         }
 
-        let signer = RemoteSigner::new(FetchTransport::new(endpoint, token.clone()))
+        let transport = FetchTransport::new(endpoint, token.clone());
+        let signer = RemoteSigner::new(transport.clone().with_fetch(fetch)?)
             .await
             .map_err(|e| to_js_error(e.code().as_str(), redact(&e.to_string(), &[&token])))?;
-        Ok(Session { signer, token })
+        Ok(Session {
+            signer,
+            token,
+            transport,
+        })
     }
 
     /// Writes XMP, then signs the result, returning `{ bytes, format, xmp }`.
@@ -112,10 +122,14 @@ impl Session {
         edit: JsValue,
         manifest: String,
         title: String,
+        fetch: JsValue,
     ) -> Result<JsValue, JsValue> {
         let edit = parse_edit(edit)?;
 
-        let result = provenance::process(&self.signer, image, &edit, &manifest, &title)
+        let signer = self
+            .signer
+            .with_transport(self.transport.clone().with_fetch(fetch)?);
+        let result = provenance::process(&signer, image, &edit, &manifest, &title)
             .await
             .map_err(|e| self.js_error(e))?;
 

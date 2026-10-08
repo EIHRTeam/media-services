@@ -268,7 +268,11 @@ pub fn assert_signature_and_hash_valid(signed: &[u8], format: &str) {
         "signature mismatch: {rendered}"
     );
     assert!(
-        rendered.contains("assertion.dataHash.match"),
+        rendered.contains(if format == "image/avif" {
+            "assertion.bmffHash.match"
+        } else {
+            "assertion.dataHash.match"
+        }),
         "asset hash did not match: {rendered}"
     );
 }

@@ -66,7 +66,14 @@ const manifest: ManifestDefinition = {
   assertions: [
     {
       label: "c2pa.actions.v2",
-      data: { actions: [{ action: "c2pa.created" }] },
+      data: {
+        actions: [
+          {
+            action: "c2pa.created",
+            digitalSourceType: "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation",
+          },
+        ],
+      },
     },
   ],
 };
@@ -92,8 +99,8 @@ try {
 }
 ```
 
-Reuse a session for multiple images, and release it after all pending operations
-finish. Disposal is synchronous and repeated calls are harmless. TypeScript
+Reuse a session for multiple images. Disposal prohibits new calls synchronously
+and releases native resources after pending operations finish; repeated calls are harmless. TypeScript
 callers may also use `using provenance = await connect(options)`; compile that
 syntax for the target runtime.
 
@@ -278,7 +285,7 @@ pnpm check:bundle
 
 Leave `RUSTFLAGS` and `CARGO_ENCODED_RUSTFLAGS` unset during the WASM build; the
 build script checks this because the target configuration selects the getrandom
-backend. The build enforces a 9 MiB WASM size budget.
+backend. The build enforces a 15 MiB WASM size budget.
 
 `pnpm test` generates a temporary signing identity and runs the Node integration
 suite against a local mock service. It needs built `dist/` and `pkg/` artifacts.
@@ -359,3 +366,214 @@ and attribution are included in `pkg/THIRD_PARTY_LICENSES.txt` in the npm packag
 and regenerated from the locked dependency tree during the build.
 Rights statements embedded in image metadata describe
 the image and do not change this project's software license.
+
+## Bounded batches
+
+`readXmpBatch()`, `writeXmpBatch()`, and `session.processBatch()` accept sync or
+async iterables and return async iterators. Results arrive in completion order:
+`{ index, id?, ok: true, value }` or `{ index, id?, ok: false, error }`. An image
+failure does not stop other items. Initialisation and input-iterator failures
+terminate the batch.
+
+```ts
+import { stat, readFile } from "node:fs/promises";
+import { writeXmpBatch } from "@eihrteam/mps-worker";
+
+async function* images(paths: AsyncIterable<string>) {
+  for await (const path of paths) {
+    const { size } = await stat(path);
+    yield {
+      id: path,
+      image: {
+        byteLength: size,
+        load: async (signal: AbortSignal) => readFile(path, { signal }),
+      },
+      options: { creatorTool: "Example Studio" },
+    };
+  }
+}
+
+for await (const item of writeXmpBatch(images(paths))) {
+  if (item.ok) await saveImage(item.id!, item.value);
+  else console.error(item.id, item.error.code);
+}
+```
+
+Each item's `image` is a `Uint8Array` or a lazy `{ byteLength, load(signal) }`.
+A lazy loader must return exactly its declared byte length and honour
+cancellation. An async source must also cooperate with cancellation of its
+pending reads; cleanup waits for pending producer and loader operations.
+Signing items supply `ProcessOptions` in `options`; writing items supply
+`XmpEdit`; reading items omit it.
+
+| Batch option       | Default | Purpose                                                |
+| ------------------ | ------- | ------------------------------------------------------ |
+| `concurrency`      | 2       | Concurrent loading/processing tasks                    |
+| `maxOutstanding`   | 4       | Accepted tasks and completed results awaiting delivery |
+| `maxInputBytes`    | 256 MiB | Maximum image size per item                            |
+| `maxOutputBytes`   | 320 MiB | Maximum result bytes per item                          |
+| `maxInFlightBytes` | 512 MiB | Reserved input bytes during loading and processing     |
+| `maxBufferedBytes` | 640 MiB | Output reservations plus completed results             |
+| `signal`           | —       | Cancels the entire batch                               |
+
+Budgets must accommodate one maximum-sized item. The scheduler reserves
+`maxOutputBytes` before dispatch, then replaces that reservation with the actual
+result size. For `process`, result size includes image bytes and UTF-8 XMP; for
+`readXmp`, it is UTF-8 XMP. Lowering the per-item output ceiling can permit more
+concurrency under the same output budget. Oversized results are rejected after
+computation; these limits do not prevent transient native allocations.
+
+Backpressure stops pulling input and scheduling work when consumers are slow.
+The source may have one additional pending descriptor awaiting an input-byte
+reservation. Use lazy sources for large collections: an array of already-loaded
+images still belongs to the caller and cannot be bounded by the scheduler.
+Images and results already delivered to the caller, WASM linear memory, allocator
+retention, intermediate C2PA allocations, and runtime overhead are outside these
+budgets. Process RSS is not a hard limit. WASM linear memory grows and does not
+shrink when an image or Session is freed; terminating a Worker releases its realm.
+
+`break` from iteration cancels remaining work and closes the source. Batch
+cancellation rejects iteration with `aborted`; per-item cancellation is an item
+failure. `connect` and `ProcessOptions` accept `signal` and `requestTimeoutMs`
+(default 30,000 ms **per HTTP request**, including reading its response).
+`readXmp(image, { signal })` and `writeXmp(image, edit, { signal })` check CPU-phase
+boundaries. Synchronous WASM computation cannot be interrupted on the calling
+thread. `timeout`, `resourceLimit`, `queueFull`, and `workerError` are additional
+stable error codes.
+
+Disposing a Session prohibits new calls immediately and defers native release
+until pending calls finish. Use `await session.close()` or `await using` when you
+need to wait for that release; repeated disposal/close is harmless.
+
+## Node Worker Threads
+
+The Node-only subpath keeps thread dependencies out of the browser entry point:
+
+```ts
+import { createWorkerPool } from "@eihrteam/mps-worker/node";
+
+await using pool = await createWorkerPool({
+  workers: 2,
+  signing: { signerEndpoint, token }, // omit for metadata-only operations
+});
+
+const signed = await pool.process(image, { title: "image.webp", manifest });
+const rewritten = await pool.writeXmp(image, { creatorTool: "Example Studio" });
+```
+
+The pool exposes `process`, `readXmp`, `writeXmp`, their batch counterparts,
+`close`, `Symbol.asyncDispose`, and read-only `stats`. The default worker count is
+`min(4, max(1, availableParallelism() - 1))`; each Worker has its own WASM instance
+and, when configured, a signing Session. The compiled module is shared; signer
+information is fetched once per Worker. One task runs per Worker. Pool batches
+default to the worker count, subject to their byte and outstanding-task budgets.
+
+Pool options include `wasm`, `signing`, `workers`, `signal` for startup,
+`maxQueuedTasks` (4), `maxInputBytes` (256 MiB), `maxOutputBytes` (320 MiB),
+`maxInFlightBytes` (512 MiB), `requestTimeoutMs` (30,000), and `closeTimeoutMs`
+(5,000). The pool input-byte budget includes both queued and running tasks.
+Direct submissions reject with `queueFull` when full; batches wait for capacity.
+Stats report active/queued tasks, reserved input bytes, and last reported total
+WASM memory. Main-thread `process.memoryUsage().external/arrayBuffers` does not
+include every Worker's heap; use process RSS and pool WASM stats as well.
+
+Inputs are preserved by default. Single operations accept a final
+`{ signal?, requestTimeoutMs?, transfer?: boolean }` argument; pool batches accept
+`transfer` alongside batch options. `transfer: true` requires a complete,
+transferable, exclusively owned ArrayBuffer. It detaches the input as soon as the
+pool accepts the task. The caller must ensure there are no other views that need
+that backing store. Shared buffers, slices, and Node's pooled Buffers are refused.
+Use `Uint8Array.from(buffer)` to obtain exclusive storage. Outputs are transferred
+back without another cross-thread image copy.
+
+A Worker crash fails its current task and triggers replacement; signing is never
+automatically retried. Closing cancels active batches and their producers as well
+as queued work, waits up to the configured
+deadline for running work, then terminates remaining Workers. No new calls are
+accepted after closing starts. Workers use their own execution arguments rather
+than inheriting process/eval/test-runner flags.
+
+## `mps` command line
+
+The npm package contains its WASM binary and a `mps` executable; using the CLI
+does not require a Rust toolchain. After this version is published:
+
+```sh
+npx @eihrteam/mps-worker xmp read input.webp
+npx @eihrteam/mps-worker xmp write input.avif --edit edit.json --output output.avif
+npx @eihrteam/mps-worker sign ./images --recursive \
+  --manifest manifest.json --output-dir ./signed --workers 4
+# Explicit executable selection:
+npx --package=@eihrteam/mps-worker mps --help
+```
+
+Installing the package also exposes `mps`. Bare `npx mps` refers to a different
+npm package name. Before publication, install the locally built tarball and run
+`npx --offline @eihrteam/mps-worker --help`.
+
+`sign` requires `--manifest` (a user JSON file). Signing credentials come from
+`SIGNER_ENDPOINT` / `SIGNER_TOKEN`, with `--signer-endpoint` and `--token-file`
+overrides. `--edit` reads `XmpEdit` JSON and `--base-packet` reads XML used only
+when an image lacks XMP. No organization presets, private keys, or tokens are
+bundled.
+
+Single-file writes use `--output`; multi-file/directory writes use `--output-dir`
+(single files may also use it). Directories are scanned lazily; `--recursive`
+enables subdirectories. Symlinks and unsupported extensions are skipped, and the
+output directory is excluded from scans. The container is validated from its
+bytes when processing. Relative paths are preserved; multiple directory roots
+receive separate numbered root subdirectories. Existing destinations are refused
+unless `--force` is supplied. Outputs are committed atomically from same-directory
+temporary files; interrupted/failed writes remove their temporary files. Atomic
+no-overwrite commits require filesystem hard-link support.
+
+`--workers N` opts into the thread pool and defaults to N concurrent tasks.
+`--concurrency`, `--max-outstanding`, `--max-input-bytes`, `--max-output-bytes`,
+`--max-in-flight-bytes`, `--max-buffered-bytes`, and `--request-timeout-ms` configure
+limits. Byte flags accept raw integers or `KiB`/`MiB`/`GiB` suffixes.
+
+Single-file `xmp read` prints XML (empty stdout if absent); batch reads print
+JSONL. Writes/signatures report progress to stderr; `--json` produces JSONL
+statuses without embedding image bytes. Exit codes are 0 for success, 1 for item
+failures, 2 for configuration/initialisation errors, and 130 for SIGINT. Successful
+outputs remain when later work fails or is cancelled.
+
+## Performance checks
+
+`pnpm test:pack` installs a local tarball in an isolated directory and checks
+bin inference, explicit `mps`, WASM loading and Worker loading. CI runs it after
+the integration suite.
+
+```sh
+cargo run -p xmp-image --example memory --release --locked -- 32
+cargo test -p provenance --test pipeline --locked # also creates plain.webp
+pnpm gen:identity
+pnpm bench
+```
+
+The allocation example asserts that each WebP/AVIF rewrite needs only one
+image-sized output allocation plus 128 KiB of metadata overhead for its fixture.
+It also limits cumulative rewrite allocations, catching sequential full-image
+intermediates. CI runs the 32 MiB case. The benchmark uses fresh Node processes for each
+combination of 1/32/128/256 MiB, WebP/AVIF, metadata/signing, and 0/1/2/4 Workers.
+After a per-Worker warm-up, it reports startup time, throughput, event-loop latency, RSS high-water marks, sampled main
+thread external/ArrayBuffer memory, and WASM memory. Results go to
+`target/tmp/benchmark.json`. Override `MPS_BENCH_SIZES` and `MPS_BENCH_ITEMS` for
+shorter runs. The large fixtures retain real encoded image payloads and grow
+valid ancillary/free boxes, isolating container copying and hashing rather than
+codec performance. Benchmarks use a local mock signer and a fixed 512 MiB input
+budget, so the largest jobs may use fewer concurrent Workers than configured.
+
+For independent verification of Node/Worker/CLI signatures as well as native
+artifacts, use the pinned c2patool 0.28.1:
+
+```sh
+MPS_TEST_C2PATOOL=c2patool pnpm test
+```
+
+The optional acceptance CI job runs this check. Public certificate trust is
+excluded for the generated test CA. Timer durations must be positive integer
+milliseconds no greater than 2,147,483,647.
+
+See [performance measurements](docs/performance.md) for the local results and
+resource tradeoffs.

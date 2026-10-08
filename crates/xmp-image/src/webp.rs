@@ -164,28 +164,34 @@ pub fn embed(bytes: &[u8], packet: &str) -> Result<Vec<u8>> {
     vp8x.extend_from_slice(&(width - 1).to_le_bytes()[..3]);
     vp8x.extend_from_slice(&(height - 1).to_le_bytes()[..3]);
 
-    let mut body = Vec::with_capacity(bytes.len() + packet.len() + 32);
+    let overflow = || Error::Corrupt("WebP output length overflows".into());
+    u32::try_from(packet.len()).map_err(|_| overflow())?;
+    let mut total = 12usize
+        .checked_add(18)
+        .and_then(|n| n.checked_add(8))
+        .and_then(|n| n.checked_add(packet.len()))
+        .and_then(|n| n.checked_add(packet.len() & 1))
+        .ok_or_else(overflow)?;
     for chunk in &chunks {
-        // The XMP chunk is rewritten, and an existing VP8X is replaced by the
-        // one carrying the updated flags.
-        if &chunk.fourcc == XMP_CHUNK || &chunk.fourcc == VP8X_CHUNK {
-            continue;
+        if &chunk.fourcc != XMP_CHUNK && &chunk.fourcc != VP8X_CHUNK {
+            total = total
+                .checked_add(chunk.end - (chunk.data_start - 8))
+                .ok_or_else(overflow)?;
         }
-        body.extend_from_slice(&bytes[chunk.data_start - 8..chunk.end]);
     }
-
-    // XMP belongs before the image data, so it goes at the front of the body.
-    let mut with_headers = Vec::with_capacity(body.len() + packet.len() + 32);
-    write_chunk(&mut with_headers, VP8X_CHUNK, &vp8x);
-    write_chunk(&mut with_headers, XMP_CHUNK, packet.as_bytes());
-    with_headers.extend_from_slice(&body);
-
-    let mut out = Vec::with_capacity(with_headers.len() + 12);
+    let riff_size = u32::try_from(total - 8).map_err(|_| overflow())?;
+    let mut out = Vec::with_capacity(total);
     out.extend_from_slice(b"RIFF");
-    // The RIFF size counts everything after the size field itself.
-    out.extend_from_slice(&((with_headers.len() + 4) as u32).to_le_bytes());
+    out.extend_from_slice(&riff_size.to_le_bytes());
     out.extend_from_slice(b"WEBP");
-    out.extend_from_slice(&with_headers);
+    write_chunk(&mut out, VP8X_CHUNK, &vp8x);
+    write_chunk(&mut out, XMP_CHUNK, packet.as_bytes());
+    for chunk in &chunks {
+        if &chunk.fourcc != XMP_CHUNK && &chunk.fourcc != VP8X_CHUNK {
+            out.extend_from_slice(&bytes[chunk.data_start - 8..chunk.end]);
+        }
+    }
+    debug_assert_eq!(out.len(), total);
     Ok(out)
 }
 

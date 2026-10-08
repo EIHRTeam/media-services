@@ -20,7 +20,12 @@ export type ErrorCode =
   | "invalidSignerInfo"
   | "malformedManifest"
   | "c2paError"
-  | "invalidArgument";
+  | "invalidArgument"
+  | "aborted"
+  | "timeout"
+  | "resourceLimit"
+  | "queueFull"
+  | "workerError";
 
 /** An error from the native side, carrying a stable {@link ErrorCode}. */
 export class MediaProvenanceError extends Error {

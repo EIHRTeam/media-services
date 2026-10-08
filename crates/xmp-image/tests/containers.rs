@@ -374,3 +374,167 @@ fn malformed_input_is_reported_rather_than_trusted() {
     absurd.extend_from_slice(&meta_payload);
     let _ = xmp_image::extract_xmp(&absurd);
 }
+
+#[test]
+fn webp_preserves_other_chunks_flags_and_padding() {
+    let original = webp();
+    let mut extended = Vec::from(&original[..12]);
+    let mut header = vec![0x30, 0, 0, 0];
+    header.extend_from_slice(&31u32.to_le_bytes()[..3]);
+    header.extend_from_slice(&31u32.to_le_bytes()[..3]);
+    extended.extend_from_slice(b"VP8X");
+    extended.extend_from_slice(&10u32.to_le_bytes());
+    extended.extend_from_slice(&header);
+    extended.extend_from_slice(b"ICCP\x03\0\0\0abc\0");
+    extended.extend_from_slice(&original[12..]);
+    let length = (extended.len() - 8) as u32;
+    extended[4..8].copy_from_slice(&length.to_le_bytes());
+    for packet in ["odd", "even"] {
+        let stamped = xmp_image::embed_xmp(&extended, packet).unwrap();
+        let (_, flags) = xmp_image::webp::inspect(&stamped).unwrap();
+        assert_eq!(flags, Some(0x34));
+        assert!(stamped.windows(12).any(|s| s == b"ICCP\x03\0\0\0abc\0"));
+        assert!(
+            stamped
+                .windows(original.len() - 12)
+                .any(|s| s == &original[12..])
+        );
+        assert_eq!(
+            xmp_image::extract_xmp(&stamped).unwrap().as_deref(),
+            Some(packet)
+        );
+        assert_eq!(stamped, xmp_image::embed_xmp(&stamped, packet).unwrap());
+    }
+}
+
+fn avif_layout_fixture(version: u8, base_width: u8, mdat_mode: u32) -> Vec<u8> {
+    fn boxed(kind: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+        let mut bytes = ((payload.len() + 8) as u32).to_be_bytes().to_vec();
+        bytes.extend_from_slice(kind);
+        bytes.extend_from_slice(payload);
+        bytes
+    }
+    let ftyp = boxed(b"ftyp", b"avif\0\0\0\0avif");
+    let mut infe = vec![2, 0, 0, 0, 0, 1, 0, 0];
+    infe.extend_from_slice(b"av01\0");
+    let mut iinf = vec![0, 0, 0, 0, 0, 1];
+    iinf.extend_from_slice(&boxed(b"infe", &infe));
+    let make_meta = |offset: u32| {
+        let index_width = if version == 0 { 0 } else { 2 };
+        let mut iloc = vec![version, 0, 0, 0, 0x44, base_width << 4 | index_width];
+        if version == 2 {
+            iloc.extend_from_slice(&1u32.to_be_bytes());
+        } else {
+            iloc.extend_from_slice(&1u16.to_be_bytes());
+        }
+        if version == 2 {
+            iloc.extend_from_slice(&1u32.to_be_bytes());
+        } else {
+            iloc.extend_from_slice(&1u16.to_be_bytes());
+        }
+        if version != 0 {
+            iloc.extend_from_slice(&[0, 0]);
+        }
+        iloc.extend_from_slice(&[0, 0]); // data reference
+        if base_width != 0 {
+            iloc.extend_from_slice(&offset.to_be_bytes());
+        }
+        iloc.extend_from_slice(&2u16.to_be_bytes());
+        for (index, relative) in [(7u16, 0u32), (9, 3)] {
+            if index_width != 0 {
+                iloc.extend_from_slice(&index.to_be_bytes());
+            }
+            iloc.extend_from_slice(
+                &(relative + if base_width == 0 { offset } else { 0 }).to_be_bytes(),
+            );
+            iloc.extend_from_slice(&3u32.to_be_bytes());
+        }
+        let mut meta = vec![0, 0, 0, 0];
+        meta.extend_from_slice(&boxed(b"iinf", &iinf));
+        meta.extend_from_slice(&boxed(b"iloc", &iloc));
+        boxed(b"meta", &meta)
+    };
+    let header_size = if mdat_mode == 1 { 16 } else { 8 };
+    let meta = make_meta(0);
+    let offset = (ftyp.len() + meta.len() + header_size) as u32;
+    let mut bytes = ftyp;
+    bytes.extend_from_slice(&make_meta(offset));
+    if mdat_mode == 1 {
+        bytes.extend_from_slice(&1u32.to_be_bytes());
+        bytes.extend_from_slice(b"mdat");
+        bytes.extend_from_slice(&22u64.to_be_bytes());
+    } else {
+        bytes.extend_from_slice(&(if mdat_mode == 0 { 0u32 } else { 14 }).to_be_bytes());
+        bytes.extend_from_slice(b"mdat");
+    }
+    bytes.extend_from_slice(b"abcdef");
+    bytes
+}
+
+#[test]
+fn avif_relocates_all_extents_and_handles_mdat_headers() {
+    for version in 0..=2 {
+        for base_width in [0, 4] {
+            for mode in [0, 1, 14] {
+                let original = avif_layout_fixture(version, base_width, mode);
+                let stamped = xmp_image::embed_xmp(&original, PACKET).unwrap();
+                assert_eq!(
+                    xmp_image::extract_xmp(&stamped).unwrap().as_deref(),
+                    Some(PACKET)
+                );
+                let payload = stamped.windows(6).position(|s| s == b"abcdef").unwrap();
+                let iloc = stamped.windows(4).position(|s| s == b"iloc").unwrap() + 4;
+                let entry = iloc + if version == 2 { 10 } else { 8 };
+                let base_at = entry
+                    + if version == 0 {
+                        4
+                    } else if version == 1 {
+                        6
+                    } else {
+                        8
+                    };
+                let base = if base_width == 0 {
+                    0
+                } else {
+                    u32::from_be_bytes(stamped[base_at..base_at + 4].try_into().unwrap()) as usize
+                };
+                let mut extent = base_at + base_width as usize + 2;
+                for (index, relative) in [(7, 0), (9, 3)] {
+                    if version != 0 {
+                        assert_eq!(
+                            u16::from_be_bytes(stamped[extent..extent + 2].try_into().unwrap()),
+                            index
+                        );
+                        extent += 2;
+                    }
+                    let offset = u32::from_be_bytes(stamped[extent..extent + 4].try_into().unwrap())
+                        as usize;
+                    assert_eq!(base + offset, payload + relative);
+                    extent += 8;
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn avif_can_append_a_new_mdat_and_rejects_unrepresentable_offsets() {
+    let mut original = avif_layout_fixture(0, 4, 14);
+    original.extend_from_slice(b"\0\0\0\x08free");
+    let stamped = xmp_image::embed_xmp(&original, PACKET).unwrap();
+    assert_eq!(
+        xmp_image::extract_xmp(&stamped).unwrap().as_deref(),
+        Some(PACKET)
+    );
+    assert_eq!(
+        &stamped[stamped.len() - PACKET.len() - 4..stamped.len() - PACKET.len()],
+        b"mdat"
+    );
+    let mut invalid = avif_layout_fixture(0, 4, 14);
+    let iloc = invalid.windows(4).position(|s| s == b"iloc").unwrap() + 4;
+    invalid[iloc + 12..iloc + 16].copy_from_slice(&u32::MAX.to_be_bytes());
+    assert_matches!(
+        xmp_image::embed_xmp(&invalid, PACKET),
+        Err(Error::Unsupported(_))
+    );
+}
