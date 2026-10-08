@@ -20,9 +20,16 @@ fn reads_the_shipped_template() {
     );
     assert_eq!(xmp.get_text("dc", "format"), Some("image/png"));
 
-    // The three timestamps ship as placeholders; parsing must not invent values.
-    assert_eq!(xmp.get_text("xmp", "CreateDate"), Some("时间戳-上传时间"));
-    assert_eq!(xmp.get_text("xmp", "ModifyDate"), Some("时间戳-同上"));
+    // The three timestamps ship as the template's own instant; parsing must not
+    // invent one of its own.
+    assert_eq!(
+        xmp.get_text("xmp", "CreateDate"),
+        Some("2026-01-22T12:00:00+08:00")
+    );
+    assert_eq!(
+        xmp.get_text("xmp", "ModifyDate"),
+        Some("2026-01-22T12:00:00+08:00")
+    );
 
     match xmp.get("dc", "creator") {
         Some(Value::Seq(items)) => {

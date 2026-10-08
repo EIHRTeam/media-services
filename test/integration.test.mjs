@@ -389,8 +389,8 @@ test("a property value with no shape is rejected rather than silently empty", as
   );
 });
 
-test("a base packet's placeholder timestamps are replaced", async () => {
-  // The template ships `时间戳-上传时间` in the three date fields. Callers pass it
+test("a base packet's own timestamps are replaced", async () => {
+  // The template ships fixed dates in the three date fields. Callers pass it
   // as-is; nothing needs blanking out first.
   const result = await provenance.process(load("plain.jpg"), {
     manifest: manifests.hypergryph,
@@ -399,7 +399,11 @@ test("a base packet's placeholder timestamps are replaced", async () => {
   });
 
   const packet = await readXmp(result.bytes);
-  assert.doesNotMatch(packet, /时间戳/, "a placeholder survived into the signed packet");
+  assert.doesNotMatch(
+    packet,
+    /2026-01-22T12:00:00/,
+    "the template's own date survived into the signed packet",
+  );
   assert.match(packet, /<xmp:CreateDate>\d{4}-\d{2}-\d{2}T[\d:]+\+08:00<\/xmp:CreateDate>/);
   // Everything else from the template is kept.
   assert.match(packet, /SKLAND Endfield Wiki Editorial Team/);

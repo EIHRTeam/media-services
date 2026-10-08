@@ -72,7 +72,7 @@ async fn stamps_xmp_then_signs_the_stamped_bytes() {
     // ...and `dc:format` describes this asset rather than the template's guess.
     let parsed = xmp::Xmp::parse(&stamped).unwrap();
     assert_eq!(parsed.get_text("dc", "format"), Some("image/jpeg"));
-    // The template's placeholder timestamps must be gone.
+    // The template's own timestamps must be gone.
     assert_eq!(
         parsed.get_text("xmp", "CreateDate"),
         Some("2026-10-07T04:03:52+09:00")
@@ -269,7 +269,7 @@ fn a_template_that_pins_an_action_time_keeps_it() {
 /// The timestamp contract, stated as a test because "do I blank the fields out
 /// first?" is exactly the question a caller has to ask.
 #[test]
-fn a_base_packet_keeps_its_placeholders_unless_dates_are_given() {
+fn a_base_packet_keeps_its_own_dates_unless_dates_are_given() {
     let path =
         std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../xmp/hypergryph.xml");
     let base = std::fs::read_to_string(path).expect("read the shipped template");
@@ -283,7 +283,7 @@ fn a_base_packet_keeps_its_placeholders_unless_dates_are_given() {
     .expect("apply");
     assert_eq!(
         untouched.get_text("xmp", "CreateDate"),
-        Some("时间戳-上传时间")
+        Some("2026-01-22T12:00:00+08:00")
     );
 
     // Supplied means replaced in place, without the caller blanking anything.
@@ -303,7 +303,7 @@ fn a_base_packet_keeps_its_placeholders_unless_dates_are_given() {
         assert_eq!(
             stamped.get_text("xmp", field),
             Some("2026-10-07T19:30:00+08:00"),
-            "{field} was left as a placeholder"
+            "{field} was left as the template's own value"
         );
     }
     // And the rest of the template survives untouched.
