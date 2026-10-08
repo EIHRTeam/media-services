@@ -1,0 +1,238 @@
+name: Publish
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to publish, for example 1.0.0 or v1.0.0"
+        required: true
+        type: string
+      release_notes:
+        description: "Optional GitHub Release notes"
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  id-token: write
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+  CARGO_TERM_COLOR: always
+  RUSTUP_TOOLCHAIN: 1.96.0
+
+concurrency:
+  group: publish-${{ startsWith(inputs.version, 'v') && inputs.version || format('v{0}', inputs.version) }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Tag, release, and publish to npm
+    runs-on: ubuntu-latest
+    environment: npm
+
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Resolve version and source
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          VERSION="${INPUT_VERSION#v}"
+          export VERSION
+          python3 - <<'PY'
+          import os
+          import re
+          import sys
+
+          version = os.environ["VERSION"]
+          number = r"(?:0|[1-9][0-9]*)"
+          identifier = rf"(?:{number}|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)"
+          pattern = rf"{number}\.{number}\.{number}(?:-{identifier}(?:\.{identifier})*)?"
+          if not re.fullmatch(pattern, version):
+              sys.exit(f"Invalid version: {os.environ['INPUT_VERSION']}. Use semver such as 1.0.0 or 1.0.0-beta.1.")
+          PY
+
+          TAG="v${VERSION}"
+          TAG_EXISTS=false
+          REMOTE_TAG="$(git ls-remote --tags origin "refs/tags/${TAG}")"
+          if [ -n "${REMOTE_TAG}" ]; then
+            git fetch origin "refs/tags/${TAG}:refs/tags/${TAG}"
+            git checkout --detach "${TAG}"
+            TAG_EXISTS=true
+            echo "Using existing tag ${TAG} at $(git rev-parse HEAD)."
+          fi
+
+          # Validate the selected source, so a retry remains possible after main advances.
+          python3 - <<'PY'
+          import json
+          import os
+          import sys
+          import tomllib
+
+          with open("package.json", encoding="utf-8") as source:
+              package = json.load(source)
+          with open("Cargo.toml", "rb") as source:
+              workspace = tomllib.load(source)
+          version = os.environ["VERSION"]
+          for name, actual in (
+              ("package.json", package["version"]),
+              ("Cargo workspace", workspace["workspace"]["package"]["version"]),
+          ):
+              if actual != version:
+                  sys.exit(f"{name} version {actual} does not match requested version {version}.")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as output:
+              output.write(f"PACKAGE_NAME={package['name']}\n")
+          PY
+
+          NPM_DIST_TAG=latest
+          PRERELEASE=false
+          if [[ "${VERSION}" == *-* ]]; then
+            PRERELEASE=true
+            PRERELEASE_CHANNEL="${VERSION#*-}"
+            PRERELEASE_CHANNEL="${PRERELEASE_CHANNEL%%.*}"
+            if [[ "${PRERELEASE_CHANNEL}" =~ ^[A-Za-z][0-9A-Za-z-]*$ ]]; then
+              NPM_DIST_TAG="$(printf '%s' "${PRERELEASE_CHANNEL}" | tr '[:upper:]' '[:lower:]')"
+            else
+              NPM_DIST_TAG=next
+            fi
+          fi
+
+          {
+            echo "VERSION=${VERSION}"
+            echo "TAG=${TAG}"
+            echo "TAG_EXISTS=${TAG_EXISTS}"
+            echo "NPM_DIST_TAG=${NPM_DIST_TAG}"
+            echo "PRERELEASE=${PRERELEASE}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org/
+
+      - name: Check existing release and npm version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          RELEASE_EXISTS=false
+          NPM_EXISTS=false
+          ERROR_FILE="$(mktemp)"
+          NPM_RESULT="$(mktemp)"
+          trap 'rm -f "${ERROR_FILE}" "${NPM_RESULT}"' EXIT
+
+          if gh api "repos/${GITHUB_REPOSITORY}/releases/tags/${TAG}" >/dev/null 2>"${ERROR_FILE}"; then
+            RELEASE_EXISTS=true
+            echo "GitHub Release ${TAG} already exists; skipping release creation."
+          elif ! grep -Fq '(HTTP 404)' "${ERROR_FILE}"; then
+            cat "${ERROR_FILE}" >&2
+            echo "Failed to query GitHub Release ${TAG}." >&2
+            exit 1
+          fi
+
+          if npm view "${PACKAGE_NAME}@${VERSION}" version --json --registry=https://registry.npmjs.org/ >"${NPM_RESULT}" 2>"${ERROR_FILE}"; then
+            NPM_EXISTS=true
+            echo "npm package ${PACKAGE_NAME}@${VERSION} already exists; skipping npm publish."
+          elif ! node --input-type=commonjs -e 'const fs = require("node:fs"); const result = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); if (result.error?.code !== "E404") process.exit(1);' "${NPM_RESULT}"; then
+            cat "${ERROR_FILE}" >&2
+            echo "Failed to query npm package ${PACKAGE_NAME}@${VERSION}." >&2
+            exit 1
+          fi
+
+          {
+            echo "RELEASE_EXISTS=${RELEASE_EXISTS}"
+            echo "NPM_EXISTS=${NPM_EXISTS}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Install the toolchain
+        run: rustup toolchain install 1.96.0 --profile minimal --component rustfmt --component clippy --target wasm32-unknown-unknown
+
+      - name: Cache Rust
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-bindgen
+        run: |
+          set -euo pipefail
+          VERSION="$(python3 - <<'PY'
+          import tomllib
+
+          with open("Cargo.lock", "rb") as source:
+              lock = tomllib.load(source)
+          print(next(package["version"] for package in lock["package"] if package["name"] == "wasm-bindgen"))
+          PY
+          )"
+          cargo install wasm-bindgen-cli --version "${VERSION}" --locked
+
+      - name: Install Binaryen
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y binaryen
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check Rust
+        run: |
+          set -euo pipefail
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+          cargo test --workspace --locked
+
+      - name: Build and check package
+        run: |
+          set -euo pipefail
+          pnpm build
+          pnpm typecheck
+          pnpm test
+          pnpm check:bundle
+
+      - name: Create and push git tag
+        if: env.TAG_EXISTS != 'true'
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "${PACKAGE_NAME}@${VERSION}"
+          git push origin "refs/tags/${TAG}"
+
+      - name: Create GitHub Release
+        if: env.RELEASE_EXISTS != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        run: |
+          set -euo pipefail
+          ARGS=("${TAG}" --verify-tag --title "${TAG}")
+          if [ "${PRERELEASE}" = "true" ]; then
+            ARGS+=(--prerelease)
+          fi
+          if [ -n "${RELEASE_NOTES}" ]; then
+            NOTES_FILE="$(mktemp)"
+            trap 'rm -f "${NOTES_FILE}"' EXIT
+            printf '%s\n' "${RELEASE_NOTES}" > "${NOTES_FILE}"
+            ARGS+=(--notes-file "${NOTES_FILE}")
+          else
+            ARGS+=(--generate-notes)
+          fi
+          gh release create "${ARGS[@]}"
+
+      - name: Publish to npm
+        if: env.NPM_EXISTS != 'true'
+        run: npm publish --access public --provenance --ignore-scripts --tag "${NPM_DIST_TAG}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

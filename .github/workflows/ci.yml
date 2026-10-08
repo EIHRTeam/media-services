@@ -71,6 +71,12 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y binaryen
 
       - run: pnpm install --frozen-lockfile
+
+      # Neither of these needs the wasm build, so they run first: a formatting or
+      # lint error should not wait on a toolchain to surface.
+      - run: pnpm lint
+      - run: pnpm fmt:check
+
       - run: pnpm build
       - run: pnpm typecheck
 
