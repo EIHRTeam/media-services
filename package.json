@@ -1,6 +1,6 @@
 {
   "name": "@eihrteam/mps-worker",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Write XMP metadata and C2PA provenance into images, in the browser or Node",
   "homepage": "https://github.com/EIHRTeam/media-services#readme",
   "bugs": {
