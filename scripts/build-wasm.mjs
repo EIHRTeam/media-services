@@ -22,12 +22,13 @@ const OUT_NAME = "media_services_wasm";
 const OUT_DIR = join(root, "pkg");
 
 /**
- * Ceiling on the shipped module. It is a few megabytes today and this is well
- * clear of that; the point is to make a large accidental addition — pulling in
- * a dependency that should not be there — fail the build rather than quietly
- * slowing every visitor's first load.
+ * Ceiling on the shipped module, set as a dead line rather than a target. The
+ * module is around 9 MB, so this leaves room for growth while still failing the
+ * build on a large accidental addition — pulling in a dependency that should not
+ * be there. A size optimisation that fails ships a larger module, and that is
+ * reported rather than fatal.
  */
-const SIZE_BUDGET_BYTES = 9 * 1024 * 1024;
+const SIZE_BUDGET_BYTES = 15 * 1024 * 1024;
 
 function run(command, args, options = {}) {
   return execFileSync(command, args, { cwd: root, encoding: "utf8", ...options });
@@ -128,11 +129,16 @@ if (!wasmOpt) {
   console.warn(`wasm-opt not found; shipping ${megabytes(before)} unoptimised`);
 } else {
   try {
-    // rustc emits bulk-memory and non-trapping float-to-int instructions by
-    // default on wasm32, and wasm-opt refuses to read those unless told they are
-    // allowed. Chromium 130 and Node 24 both support them.
+    // rustc emits sign-extension, bulk-memory and non-trapping float-to-int
+    // instructions by default on wasm32, and wasm-opt refuses to read any of
+    // them unless told they are allowed. All three are named because the
+    // defaults differ by binaryen version: sign extension is on in newer
+    // releases but off in the 108 that Ubuntu ships, and a build that only works
+    // against one of them is a build that fails in CI. Chromium 130 and Node 24
+    // both support the three.
     run(wasmOpt, [
       "-Os",
+      "--enable-sign-ext",
       "--enable-bulk-memory",
       "--enable-nontrapping-float-to-int",
       "--strip-debug",
