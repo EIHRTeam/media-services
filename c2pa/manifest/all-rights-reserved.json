@@ -6,7 +6,6 @@
   "claim_generator_info": [
     {
       "name": "EIHRTeam Media Provenance Service",
-      "version": "1.0.0",
       "specVersion": "2.4.0"
     }
   ],
@@ -20,15 +19,13 @@
             "action": "c2pa.created",
             "digitalSourceType": "http://cv.iptc.org/newscodes/digitalsourcetype/digitalCreation",
             "softwareAgent": {
-              "name": "EIHRTeam Media Provenance Service",
-              "version": "1.0.0"
+              "name": "EIHRTeam Media Provenance Service"
             }
           },
           {
             "action": "c2pa.published",
             "softwareAgent": {
-              "name": "EIHRTeam Media Provenance Service",
-              "version": "1.0.0"
+              "name": "EIHRTeam Media Provenance Service"
             }
           }
         ],

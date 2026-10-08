@@ -11,6 +11,11 @@ import { verifyArtifact } from "./verify-artifact.mjs";
 import { startMockSigner } from "./mock-signer.mjs";
 
 const cli = fileURLToPath(new URL("../dist/cli.js", import.meta.url));
+// Read rather than written out here. The assertion below is that the CLI
+// reports the version of the package it ships in, and a literal in the test is
+// a second copy of that version which no release updates — which is how this
+// came to fail when the workspace moved to 1.1.0.
+const { version } = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));
 let directory;
 let input;
 let edit;
@@ -47,7 +52,7 @@ const run = (args, env) => invoke(args, env).result;
 
 test("CLI help, version and parameter errors", async () => {
   assert.match((await run(["--help"])).stdout, /mps xmp read/);
-  assert.equal((await run(["--version"])).stdout.trim(), "1.0.0");
+  assert.equal((await run(["--version"])).stdout.trim(), version);
   for (const args of [
     ["xmp", "write", input],
     ["xmp", "write", input, "--edit", edit, "--output-dir", join(directory, "invalid-single")],

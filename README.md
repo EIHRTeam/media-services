@@ -352,7 +352,7 @@ WASM loading, and processing. After validation, a maintainer with access to the
 npm organization can publish that exact tarball:
 
 ```sh
-npm publish ./eihrteam-mps-worker-1.0.0.tgz --access public
+npm publish ./eihrteam-mps-worker-*.tgz --access public
 ```
 
 Publishing a tarball does not run the repository's lifecycle checks. Validate it
