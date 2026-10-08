@@ -23,6 +23,14 @@ target. Install a wasm-bindgen CLI matching `Cargo.lock`; `wasm-opt` is optional
 - `cargo clippy --workspace --all-targets --locked -- -D warnings`: lint Rust.
 - `cargo test --workspace --locked`, then `pnpm test`: run native and Node suites.
 - `pnpm check:bundle` and `pnpm test:pack`: validate package contents and installed tarball behavior.
+- `pnpm version:bump 1.1.0` and `pnpm hooks:install`: move a version, and keep the
+  lockfile in step on commit. See Versioning and the Lockfile.
+
+## Versioning and the Lockfile
+
+Use `pnpm version:bump <version>` to update `Cargo.toml`, `package.json`, and
+`Cargo.lock` together. Run `pnpm hooks:install` to enable automatic lockfile
+restaging when a `Cargo.toml` changes. Rust CI uses `--locked` to detect drift.
 
 ## Coding Style & Naming Conventions
 

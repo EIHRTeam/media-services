@@ -1487,7 +1487,7 @@ checksum = "f9f8bd3e56ce4dfc153cf470fffbfa98c7620958b312ca5c3a4b8d5181fd13c6"
 
 [[package]]
 name = "media-services-wasm"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "console_error_panic_hook",
@@ -1898,7 +1898,7 @@ dependencies = [
 
 [[package]]
 name = "provenance"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "async-trait",
  "c2pa",
@@ -3198,7 +3198,7 @@ checksum = "cd223bc94c615fc02bf2f4bbc22a4a9bfe489c2add3ec10b1038df3aca44cac7"
 
 [[package]]
 name = "xmp"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "quick-xml",
  "thiserror 2.0.21",
@@ -3206,7 +3206,7 @@ dependencies = [
 
 [[package]]
 name = "xmp-image"
-version = "1.0.0"
+version = "1.1.0"
 dependencies = [
  "image",
  "thiserror 2.0.21",

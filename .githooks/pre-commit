@@ -1,0 +1,44 @@
+#!/bin/sh
+#
+# Brings Cargo.lock back in step with Cargo.toml before a commit goes out.
+#
+# The version lives by hand in Cargo.toml and package.json and is copied into
+# Cargo.lock by cargo, and cargo only rewrites the lockfile when it is asked to.
+# So editing a manifest and committing is enough to produce a tree that every
+# `--locked` build — the wasm job and the release workflow — refuses, with a
+# message about the lockfile rather than about the version someone meant to
+# change. `pnpm version:bump` makes that mistake at the source; this catches the
+# edits that do not go through it.
+#
+# Installed with `pnpm hooks:install`. It can be bypassed with --no-verify, and
+# CI runs the same check without --locked turned off, so a bypass is not a hole.
+set -eu
+
+if ! git diff --cached --name-only --diff-filter=ACMR | grep -qE '(^|/)Cargo\.toml$'; then
+  exit 0
+fi
+
+if ! command -v cargo >/dev/null 2>&1; then
+  echo "pre-commit: cargo is not on PATH, so Cargo.lock cannot be checked against Cargo.toml." >&2
+  echo "pre-commit: install Rust, or commit with --no-verify if that is deliberate." >&2
+  exit 1
+fi
+
+# Reads the working tree, not the index. A manifest that is broken on disk but
+# staged in a working state fails here; --no-verify is the way past that, and CI
+# still has the final say.
+#
+# cargo reports progress on stderr, so both streams are captured to keep a
+# successful commit quiet, and replayed when it fails, where the message is the
+# only thing that says what to fix.
+if ! output=$(cargo update --workspace 2>&1); then
+  printf '%s\n' "$output" >&2
+  echo "pre-commit: cargo update --workspace failed; Cargo.lock may be out of step." >&2
+  echo "pre-commit: fix Cargo.toml, or commit with --no-verify if that is deliberate." >&2
+  exit 1
+fi
+
+if ! git diff --quiet -- Cargo.lock; then
+  git add Cargo.lock
+  echo "pre-commit: Cargo.lock brought in step with Cargo.toml and staged."
+fi

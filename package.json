@@ -70,7 +70,9 @@
     "acceptance": "node scripts/acceptance.mjs",
     "prepack": "pnpm build && pnpm check:bundle",
     "bench": "node scripts/bench.mjs",
-    "test:pack": "node scripts/test-pack.mjs"
+    "test:pack": "node scripts/test-pack.mjs",
+    "version:bump": "node scripts/bump-version.mjs",
+    "hooks:install": "git config core.hooksPath .githooks"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
